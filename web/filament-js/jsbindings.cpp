@@ -1912,7 +1912,16 @@ class_<Texture>("Texture")
     .function("generateMipmaps", &Texture::generateMipmaps)
     .function("_setImage", EMBIND_LAMBDA(void, (Texture* self,
             Engine* engine, uint8_t level, PixelBufferDescriptor pbd), {
-        self->setImage(*engine, level, std::move(*pbd.pbd));
+        // A cubemap is six layers of one level; the 2D helper uploads only the
+        // first. Since setImageCube went, this is the web build's only way to
+        // fill all six faces from one contiguous buffer.
+        if (self->getTarget() == Texture::Sampler::SAMPLER_CUBEMAP) {
+            uint32_t const width = self->getWidth(level);
+            uint32_t const height = self->getHeight(level);
+            self->setImage(*engine, level, 0, 0, 0, width, height, 6, std::move(*pbd.pbd));
+        } else {
+            self->setImage(*engine, level, std::move(*pbd.pbd));
+        }
     }), allow_raw_pointers())
     .function("_getWidth", EMBIND_LAMBDA(size_t, (Texture* self,
             Engine* engine, uint8_t level), {

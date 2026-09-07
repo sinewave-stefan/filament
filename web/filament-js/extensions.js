@@ -681,7 +681,11 @@ Filament.loadClassExtensions = function() {
         resourceLoader.addStbProvider("image/png", stbProvider);
         resourceLoader.addKtx2Provider("image/ktx2", ktx2Provider);
 
+        let decodeStarted = false;
         const onComplete = () => {
+            if (decodeStarted) return;
+            decodeStarted = true;
+            let completed = false;
             resourceLoader.asyncBeginLoad(asset);
 
             // NOTE: This decodes in the wasm layer instead of using Canvas2D, which allows Filament
@@ -690,12 +694,15 @@ Filament.loadClassExtensions = function() {
 
             // Decode a single PNG or JPG every 30 milliseconds, or at the specified interval.
             const timer = setInterval(() => {
+                if (completed) return;
                 resourceLoader.asyncUpdateLoad();
                 const progress = resourceLoader.asyncGetLoadProgress();
                 if (progress >= 1) {
+                    completed = true;
                     clearInterval(timer);
                     resourceLoader.delete();
                     stbProvider.delete();
+                    ktx2Provider.delete();
                     onDone();
                 }
             }, interval);

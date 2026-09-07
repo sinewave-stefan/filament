@@ -92,10 +92,11 @@ Filament.Buffer = function(typedarray) {
     console.assert(typedarray.buffer instanceof ArrayBuffer);
     console.assert(typedarray.byteLength > 0);
 
-    // The only reason we need to create a copy here is that emscripten might "grow" its entire heap
-    // (i.e. destroy and recreate) during the allocation of the BufferDescriptor, which would cause
-    // detachment if the source array happens to be view into the old emscripten heap.
-    const ta = typedarray.slice();
+    // BufferDescriptor allocation can detach a view into the current WASM heap,
+    // but ordinary fetched ArrayBuffers are stable. Avoid duplicating very large
+    // GLBs in JS memory before the required JS-to-WASM copy.
+    const wasmHeapBuffer = Filament.HEAPU8 && Filament.HEAPU8.buffer;
+    const ta = typedarray.buffer === wasmHeapBuffer ? typedarray.slice() : typedarray;
 
     const bd = new Filament.driver$BufferDescriptor(ta.byteLength);
     const uint8array = new Uint8Array(ta.buffer, ta.byteOffset, ta.byteLength);

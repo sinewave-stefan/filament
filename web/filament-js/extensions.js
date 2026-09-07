@@ -701,11 +701,20 @@ Filament.loadClassExtensions = function() {
             }, interval);
         };
 
-        // Download all non-texture resources and invoke the callback when done.
-        if (bufferUris.length == 0) {
-            onComplete();
-        } else {
-            Filament.fetch(bufferUris, onComplete, function(absoluteUri) {
+        // Wait for every referenced resource before decoding. Upstream 1.71.4
+        // started immediately when bufferUris was empty, racing all texture-only
+        // generated GLBs and permanently producing untextured materials.
+        let pendingFetchGroups = (bufferUris.length > 0 ? 1 : 0) +
+                (textureUris.length > 0 ? 1 : 0);
+        const onFetchGroupComplete = () => {
+            if (--pendingFetchGroups === 0) {
+                onComplete();
+            }
+        };
+
+        // Download all non-texture resources.
+        if (bufferUris.length > 0) {
+            Filament.fetch(bufferUris, onFetchGroupComplete, function(absoluteUri) {
                 const buffer = getBufferDescriptor(absoluteUri);
                 const relativeUri = absoluteToRelativeUri[absoluteUri];
                 resourceLoader.addResourceData(relativeUri, buffer);
@@ -714,14 +723,20 @@ Filament.loadClassExtensions = function() {
             });
         }
 
-        // Begin downloading all texture resources, no completion callback necessary.
-        Filament.fetch(textureUris, null, function(absoluteUri) {
-            const buffer = getBufferDescriptor(absoluteUri);
-            const relativeUri = absoluteToRelativeUri[absoluteUri];
-            resourceLoader.addResourceData(relativeUri, buffer);
-            buffer.delete();
-            onFetched(relativeUri);
-        });
+        // Download all texture resources before beginning decode.
+        if (textureUris.length > 0) {
+            Filament.fetch(textureUris, onFetchGroupComplete, function(absoluteUri) {
+                const buffer = getBufferDescriptor(absoluteUri);
+                const relativeUri = absoluteToRelativeUri[absoluteUri];
+                resourceLoader.addResourceData(relativeUri, buffer);
+                buffer.delete();
+                onFetched(relativeUri);
+            });
+        }
+
+        if (pendingFetchGroups === 0) {
+            onComplete();
+        }
     };
 
     Filament.gltfio$FilamentAsset.prototype.getEntities = function() {
